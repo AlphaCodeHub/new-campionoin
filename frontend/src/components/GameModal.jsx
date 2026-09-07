@@ -1,0 +1,1 @@
+export default function GameModal({ title, children, onClose }) { return <div className="modal-backdrop" role="presentation"><section className="game-modal" role="dialog" aria-modal="true" aria-label={title}><header><h2>{title}</h2><button aria-label="Close" onClick={onClose}>×</button></header>{children}</section></div>; }

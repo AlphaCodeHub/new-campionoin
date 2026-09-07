@@ -1,0 +1,18 @@
+import { useEffect, useState } from 'react';
+import './characterCreation.css';
+import { generateAvatar } from '../avatar/cropImage';
+import { inspectImage } from '../avatar/imageValidation';
+import { createGameState, loadGame, saveGame } from '../systems/SaveManager';
+export default function CharacterCreationPage({ onBack, onComplete }) {
+  const [source, setSource] = useState(null); const [step, setStep] = useState('upload'); const [zoom, setZoom] = useState(1); const [avatar, setAvatar] = useState(null); const [name, setName] = useState(''); const [error, setError] = useState(''); const [warning, setWarning] = useState('');
+  useEffect(() => () => { if (source?.url) URL.revokeObjectURL(source.url); }, [source]);
+  async function selectImage(event) { const file = event.target.files?.[0]; if (!file) return; setError(''); const result = await inspectImage(file); if (result.error) { setError(result.error); return; } setSource({ ...result, file }); setWarning(result.warning); setZoom(1); setStep('crop'); }
+  async function generate() { try { setStep('processing'); const generated = await generateAvatar(source.file, source.url, zoom); setAvatar(generated); setStep('name'); } catch { setError('Avatar preview could not be generated. Please choose another photo and try again.'); setStep('crop'); } }
+  function saveCharacter() { const cleanName = name.trim(); if (!cleanName) { setError('Give your companion a name before saving.'); return; } const state = { ...createGameState(), ...loadGame(), character: { name: cleanName.slice(0, 24), avatar, createdAt: new Date().toISOString() } }; saveGame(state); onComplete(); }
+  return <main className="app-shell creator"><button className="back-button" onClick={onBack}>← Back to room</button><p className="eyebrow">CHARACTER CREATOR · {step.toUpperCase()}</p>
+    {step === 'upload' && <><h1>Choose a photo</h1><p>Your photo stays in this browser until you choose to save an avatar. We do not upload it automatically.</p><label className="upload-zone"><strong>Upload a suitable photo</strong><span>JPG, PNG, or WEBP · up to 10 MB</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={selectImage} /></label></>}
+    {step === 'crop' && <><h1>Frame your companion</h1><p>Position the face or subject in the square. This MVP uses a centered crop.</p><div className="crop-frame"><img src={source.url} alt="Crop source" style={{ transform: `scale(${zoom})` }} /></div><label className="range-label">Zoom <input type="range" min="1" max="2" step="0.05" value={zoom} onChange={event => setZoom(Number(event.target.value))} /></label><button className="primary-button" onClick={generate}>Confirm and create preview</button><button className="secondary-button" onClick={() => setStep('upload')}>Choose another photo</button></>}
+    {step === 'processing' && <section className="processing"><div className="spinner" /><h1>Making your preview</h1><p>Preparing a local stylized preview…</p></section>}
+    {step === 'name' && <><h1>Meet your companion</h1><p className="mvp-note">Your avatar was processed locally when the optional LumaPet API is running, with a safe in-browser fallback otherwise.</p><img className="generated-avatar" src={avatar} alt="Generated stylized companion" /><label className="name-field">What should we call them?<input autoFocus maxLength="24" value={name} onChange={event => setName(event.target.value)} placeholder="Companion name" /></label><button className="primary-button" onClick={saveCharacter}>Save character and enter room</button></>}
+    {warning && <p className="warning" role="status">{warning}</p>}{error && <p className="error" role="alert">{error}</p>}</main>;
+}
