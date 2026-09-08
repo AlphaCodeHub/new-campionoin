@@ -19,12 +19,12 @@ export class VoiceController {
 
   initVoices() {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    const loadVoices = () => {
+    const load = () => {
       this.voices = window.speechSynthesis.getVoices() || [];
     };
-    loadVoices();
+    load();
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
-      window.speechSynthesis.onvoiceschanged = loadVoices;
+      window.speechSynthesis.onvoiceschanged = load;
     }
   }
 
@@ -41,12 +41,12 @@ export class VoiceController {
   unlockAudio() {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     try {
-      window.speechSynthesis.resume();
-      // Speak a brief silent space to unlock audio playback permissions
-      const silent = new SpeechSynthesisUtterance(' ');
-      silent.volume = 0.01;
-      silent.rate = 2.0;
-      window.speechSynthesis.speak(silent);
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+      // Speak a brief blank space to prime the audio engine on user gesture
+      const primer = new SpeechSynthesisUtterance('');
+      window.speechSynthesis.speak(primer);
     } catch {
       // Ignore unlock errors
     }
@@ -58,12 +58,12 @@ export class VoiceController {
     }
     if (!this.voices.length) return null;
 
-    const targetLang = (preferredLang || 'en').toLowerCase().slice(0, 2);
-    const matching = this.voices.filter(v => (v.lang || '').toLowerCase().startsWith(targetLang));
+    const target = (preferredLang || 'en').toLowerCase().slice(0, 2);
+    const matching = this.voices.filter(v => (v.lang || '').toLowerCase().startsWith(target));
     const candidates = matching.length ? matching : this.voices;
 
-    // Prefer cheerful, female, or natural voices (e.g. Zira, Jenny, Aria, Samantha, Google, Natural)
-    const priorityNames = ['zira', 'jenny', 'aria', 'samantha', 'victoria', 'natural', 'google', 'karen'];
+    // Cheerful English / Natural voice preferences
+    const priorityNames = ['zira', 'jenny', 'aria', 'samantha', 'victoria', 'google', 'natural', 'david', 'mark'];
     for (const name of priorityNames) {
       const found = candidates.find(v => (v.name || '').toLowerCase().includes(name));
       if (found) return found;
@@ -80,10 +80,9 @@ export class VoiceController {
       }
 
       try {
-        if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-          window.speechSynthesis.cancel();
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
         }
-        window.speechSynthesis.resume();
       } catch {
         // Continue
       }
@@ -96,12 +95,11 @@ export class VoiceController {
         speech.voice = selectedVoice;
         speech.lang = selectedVoice.lang;
       } else {
-        speech.lang = lang || navigator.language || 'en-US';
+        speech.lang = lang || 'en-US';
       }
 
-      // Safe rate and pitch for maximum OS and browser compatibility
       speech.rate = 1.0;
-      speech.pitch = 1.08;
+      speech.pitch = 1.0;
       speech.volume = 1.0;
 
       let hasResolved = false;
@@ -113,13 +111,14 @@ export class VoiceController {
       };
 
       speech.onend = cleanup;
-      speech.onerror = () => {
+      speech.onerror = (e) => {
+        console.warn('SpeechSynthesis error:', e);
         try { window.speechSynthesis.resume(); } catch { /* ignore */ }
         cleanup();
       };
 
-      // Safety timeout in case browser TTS hangs without firing events
-      const safetyTimer = window.setTimeout(cleanup, Math.max(3500, text.length * 120));
+      // Safety timeout to prevent hanging UI
+      const safetyTimer = window.setTimeout(cleanup, Math.max(3500, text.length * 140));
       speech.onend = () => {
         window.clearTimeout(safetyTimer);
         cleanup();
@@ -127,13 +126,14 @@ export class VoiceController {
 
       try {
         window.speechSynthesis.speak(speech);
-        // Workaround for Chrome bug where speech pauses after cancel
+        // Chrome bug workaround: ensure synthesis is unpaused
         window.setTimeout(() => {
           if (window.speechSynthesis.paused) {
             window.speechSynthesis.resume();
           }
         }, 50);
-      } catch {
+      } catch (err) {
+        console.error('speak error:', err);
         cleanup();
       }
     });
@@ -141,8 +141,10 @@ export class VoiceController {
 
   stopSpeaking() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      try { window.speechSynthesis.resume(); } catch { /* ignore */ }
+      try {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+      } catch { /* ignore */ }
     }
     this.currentUtterance = null;
   }

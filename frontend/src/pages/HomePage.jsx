@@ -13,6 +13,15 @@ import { applyAction, hydrateGame, persistGame } from '../systems/GameEngine';
 import { audioManager } from '../systems/AudioManager';
 import { useVoice } from '../voice/useVoice';
 
+const QUICK_PROMPTS = [
+  { label: '👋 Hello Nova', text: 'Hello Nova' },
+  { label: '❓ How are you?', text: 'How are you?' },
+  { label: '🎭 Tell a Joke', text: 'Tell me a joke' },
+  { label: '🍕 Feed Snack', text: 'Eat some food' },
+  { label: '💃 Dance', text: 'Dance for me' },
+  { label: '🌙 Sleep', text: 'Time to sleep' }
+];
+
 export default function HomePage({ onCreate }) {
   const [game, setGame] = useState(hydrateGame);
   const [reaction, setReaction] = useState('Tap your companion to say hello!');
@@ -31,9 +40,22 @@ export default function HomePage({ onCreate }) {
     setGame(current => applyAction(current, action, payload));
   }, []);
 
-  const handleVoiceSpeech = useCallback(({ userText, reply, emotion, sound }) => {
+  const handleVoiceSpeech = useCallback(({ userText, reply, emotion, sound, actionTrigger, foodItem }) => {
     setReaction(`${companion.name}: “${reply}”`);
-    update('tap');
+    
+    // Execute interactive voice action if triggered
+    if (actionTrigger === 'sleep') {
+      update('sleep');
+    } else if (actionTrigger === 'clean') {
+      update('clean');
+    } else if (actionTrigger === 'feed') {
+      update('feed', foodItem || { name: 'Apple', cost: 0, hunger: 12, happiness: 3 });
+    } else if (actionTrigger === 'play') {
+      setPanel('play');
+    } else {
+      update('tap');
+    }
+
     if (sound && audioManager.enabled) {
       audioManager.playSFX(sound);
     }
@@ -95,7 +117,7 @@ export default function HomePage({ onCreate }) {
         return;
       }
       voice.enableHandsFree();
-      setReaction(voice.supported ? 'Starting hands-free chat…' : 'Voice input is unavailable in this browser.');
+      setReaction(voice.supported ? 'Starting hands-free chat… Say “Hello Nova”!' : 'Voice input is unavailable in this browser.');
     }
   }
 
@@ -113,6 +135,14 @@ export default function HomePage({ onCreate }) {
     }));
     setPanel(null);
   }
+
+  const handleQuickPrompt = (promptText) => {
+    voice.sendChatMessage(promptText.replace('Nova', companion.name));
+  };
+
+  const testVoiceOutput = () => {
+    voice.speakText(`Hello! I am ${companion.name}. My voice is working loud and clear!`);
+  };
 
   return (
     <main className={`game-shell theme-${theme}`}>
@@ -166,17 +196,38 @@ export default function HomePage({ onCreate }) {
         </div>
       </section>
 
+      {/* Hands-Free Voice Control Status */}
       {voice.enabled ? (
         <button className={`voice-indicator ${voice.listening ? 'active' : ''}`} onClick={voice.stopHandsFree}>
-          ● {voice.speaking ? `${companion.name} is speaking…` : voice.listening ? 'Hands-free chat is listening' : 'Hands-free chat reconnecting'} · tap to pause
+          ● {voice.speaking ? `${companion.name} is speaking…` : voice.listening ? '🎤 Hands-free chat is listening... (Say "Hello Nova")' : 'Hands-free chat reconnecting'} · tap to pause
         </button>
       ) : (
         <button className="handsfree-setup" onClick={voice.enableHandsFree}>
-          Enable hands-free chat <small>Microphone permission required once</small>
+          🎤 Enable Hands-Free Voice Chat <small>Speak into microphone · say "Hello {companion.name}"</small>
         </button>
       )}
 
+      {/* Real-time speech transcript feedback */}
+      {voice.lastHeard && (
+        <div className="voice-live-text">
+          <span>Heard:</span> <strong>“{voice.lastHeard}”</strong>
+        </div>
+      )}
+
       {voice.error && <div className="inline-error">{voice.error}</div>}
+
+      {/* Quick Talk / Prompt Chips */}
+      <div className="quick-prompts" aria-label="Quick conversation prompts">
+        {QUICK_PROMPTS.map(p => (
+          <button
+            key={p.label}
+            className="quick-chip"
+            onClick={() => handleQuickPrompt(p.text)}
+          >
+            {p.label.replace('Nova', companion.name)}
+          </button>
+        ))}
+      </div>
 
       <ActionDock onAction={choose} />
 
@@ -240,6 +291,9 @@ export default function HomePage({ onCreate }) {
               />
             </label>
           ))}
+          <button className="test-voice-button" onClick={testVoiceOutput}>
+            🔊 Test Companion Voice Audio
+          </button>
           <button
             className="danger-button"
             onClick={() => {
